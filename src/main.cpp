@@ -654,8 +654,8 @@ void setup() {
     case HalGPIO::WakeupReason::AfterUSBPower:
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
-#if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
-    FREEINK_DEVICE_METALIO_EINK4
+#if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERDIY || \
+    FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_METALIO_EINK4
       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
       // (its button is behind the PMIC). Metalio also needs native USB available
@@ -971,7 +971,7 @@ void loop() {
     return;
   }
 
-#if FREEINK_DEVICE_PAPERMONO
+#if FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERDIY
   // Paper Mono reports the PMIC power button as a one-tick click, so the held
   // path above cannot fire. With the default Ignore action, retain the normal
   // power-button meaning and shut down; explicit alternate bindings still win.
