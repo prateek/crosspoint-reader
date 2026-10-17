@@ -228,6 +228,7 @@ bool HalGPIO::isUsbConnected() const {
   // a /STAT pin — and reports false on boards with no battery telemetry at all.
   // Caveat: charge termination at 100% reads as "not connected".
   static const BatteryMonitor battery;
+  if (BoardConfig::isPaperDiy()) return battery.isExternalPowerPresent();
   return battery.isCharging();
 }
 
@@ -241,7 +242,8 @@ bool HalGPIO::coldBootImpliesPowerButton() const {
   // EEGO A4 misread them the same way once the charger terminates at 100%
   // (STAT inactive reads as "no USB").
   // The Metalio sleeps powered off and only its button turns it back on.
-  return isXteinkDevice() || BoardConfig::isPaperMono() || BoardConfig::isSticky() || BoardConfig::isMetalioEInk4();
+  return isXteinkDevice() || BoardConfig::isPaperDiy() || BoardConfig::isPaperMono() || BoardConfig::isSticky() ||
+         BoardConfig::isMetalioEInk4();
 }
 
 HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {

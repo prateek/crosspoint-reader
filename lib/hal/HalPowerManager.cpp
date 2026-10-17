@@ -15,8 +15,11 @@
 #include <HalFrontlight.h>
 #endif
 
-#if FREEINK_DEVICE_PAPERMONO
+#if FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERDIY
 #include <M5Pm1.h>
+#if FREEINK_DEVICE_PAPERDIY
+#include <PaperDiyBoard.h>
+#endif
 #endif
 
 HalPowerManager powerManager;  // Singleton instance
@@ -132,7 +135,7 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   // guarantees that ordering).
   freeink::PowerManager::powerDownRailsForSleep();
 
-#if FREEINK_DEVICE_PAPERMONO
+#if FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERDIY
   // Its power button is behind the M5PM1 PMIC rather than an ESP GPIO, so
   // normal GPIO deep sleep would have no wake source. Ask the PMIC to shut the
   // device down; a button click then restarts it through a cold boot.
@@ -144,6 +147,15 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   // Deep sleep leaves the board, 4G modem and audio module powered, so cut
   // power instead; the button cold-boots it. Returns only on USB power.
   freeink::metalio::powerOff();
+#endif
+
+#if FREEINK_DEVICE_PAPERDIY
+  // If USB keeps the board powered, either navigation key can wake it.
+  freeink::paperdiy::setEpdPower(false);
+  const auto& keys = BoardConfig::ACTIVE.input;
+  while (digitalRead(keys.up) == LOW || digitalRead(keys.down) == LOW) delay(10);
+  freeink::PowerManager::armWakeOnPins((1ULL << keys.up) | (1ULL << keys.down));
+  freeink::PowerManager::deepSleep();
 #endif
 
   // Waits for the power button to be physically released (so holding it doesn't

@@ -8,6 +8,8 @@ CrossPoint is open-source e-reader firmware - community-built, fully hackable, f
 - **ESP32C3-based** Xteink X4 and X3.
 - **ESP32S3-based** Xteink X4Pro and X4Classic, Seeed reTerminal Sticky, M5PaperMono
 
+Experimental [PaperDIY bring-up and validation](docs/paperdiy.md) is available in this fork; physical-device validation is pending.
+
 Check [our Devices page](https://crosspointreader.com/devices) for the full list.
 
 ![CrossPoint Reader running on Xteink device](./docs/images/cover.jpg)
