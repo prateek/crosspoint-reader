@@ -56,6 +56,7 @@ bool switchTo(const esp_partition_t* dest) {
 
   // Find smallest seq > activeSeq such that (seq-1) % 2 == destOtaIdx,
   // assuming 2 OTA partitions (matches our partitions.csv with ota_0 + ota_1).
+  // PaperDIY dual boot keeps this layout: Companion in ota_0, CrossPoint in ota_1.
   uint32_t newSeq = activeSeq + 1;
   while (((newSeq - 1u) % 2u) != (destOtaIdx % 2u)) ++newSeq;
 

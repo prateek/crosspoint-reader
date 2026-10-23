@@ -151,6 +151,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     LOG_ERR("OTA", "No OTA partition available");
     return INTERNAL_UPDATE_ERROR;
   }
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  // esp_ota_begin erases the slot, so refuse before it.
+  if (firmware_flash::isCompanionSlot(updatePartition)) {
+    LOG_ERR("OTA", "Refusing to overwrite Companion slot %s", updatePartition->label);
+    return COMPANION_SLOT_ERROR;
+  }
+#endif
 
   esp_ota_handle_t otaHandle = 0;
   esp_err_t esp_err = esp_ota_begin(updatePartition, OTA_SIZE_UNKNOWN, &otaHandle);

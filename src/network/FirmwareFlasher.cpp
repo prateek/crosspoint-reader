@@ -65,6 +65,10 @@ const char* resultName(Result r) {
       return "WRITE_FAIL";
     case Result::OTADATA_FAIL:
       return "OTADATA_FAIL";
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+    case Result::COMPANION_SLOT:
+      return "COMPANION_SLOT";
+#endif
   }
   return "?";
 }
@@ -84,6 +88,31 @@ uint16_t runningPartitionChipId() {
   }();
   return cached;
 }
+
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+bool isCompanionSlot(const esp_partition_t* partition) {
+  return partition && partition->type == ESP_PARTITION_TYPE_APP &&
+         partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0;
+}
+
+bool companionImagePresent() {
+  const esp_partition_t* slot =
+      esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
+  if (!slot) return false;
+  uint8_t header[HEADER_SIZE];
+  if (esp_partition_read(slot, 0, header, sizeof(header)) != ESP_OK) return false;
+  uint16_t imageChip;
+  std::memcpy(&imageChip, header + 12, sizeof(imageChip));
+  // The app descriptor follows the first segment header; checking its magic
+  // rejects a stray header without reading the whole image.
+  esp_app_desc_t desc;
+  const bool valid = header[0] == ESP_IMAGE_MAGIC && header[1] > 0 && imageChip == runningPartitionChipId() &&
+                     esp_ota_get_partition_description(slot, &desc) == ESP_OK;
+  LOG_INF("FLASH", "companion slot %s: magic=0x%02X segs=%u chip=0x%04X -> %s", slot->label, header[0], header[1],
+          imageChip, valid ? desc.project_name : "missing");
+  return valid;
+}
+#endif
 
 namespace {
 // Stream `length` bytes from `file` starting at the current read offset, feeding them through
@@ -281,6 +310,12 @@ Result flashFromSdPath(const char* sdPath, ProgressCb onProgress, void* ctx, boo
     LOG_ERR("FLASH", "no next-update partition");
     return Result::NO_PARTITION;
   }
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  if (isCompanionSlot(dest)) {
+    LOG_ERR("FLASH", "refusing to overwrite Companion slot %s", dest->label);
+    return Result::COMPANION_SLOT;
+  }
+#endif
 
   // When the caller already ran validateImageFile() against this same partition
   // size (e.g. SdFirmwareUpdateActivity validates before the confirmation

@@ -22,6 +22,9 @@ class OtaUpdater {
     INTERNAL_UPDATE_ERROR,
     OOM_ERROR,
     WRONG_DEVICE_ERROR,
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+    COMPANION_SLOT_ERROR,
+#endif
   };
 
   size_t getOtaSize() const { return otaSize; }

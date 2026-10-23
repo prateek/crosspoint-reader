@@ -46,6 +46,11 @@ class SdFirmwareUpdateActivity : public Activity {
   size_t writtenBytes = 0;
   unsigned int lastRenderedPercent = 101;
   std::string errorMessage;
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  // Wrapped instructions under errorMessage (i18n table, flash-resident).
+  const char* errorHint = nullptr;
+  void setCompanionSlotError();
+#endif
 
   void launchPicker();
   void onPickerResult(const ActivityResult& result);
