@@ -26,12 +26,19 @@ class OtaUpdateActivity : public Activity {
   // Points into the i18n string table (flash-resident, so no lifetime concern);
   // nullptr means no extra detail.
   const char* failedDetail = nullptr;
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  // Wrapped instructions under failedDetail; same lifetime rules.
+  const char* failedHint = nullptr;
+#endif
   // Cancel/Update confirmation over the version info (replaces the old
   // hand-rolled bottom tap rects).
   OptionPopup confirmPopup;
 
   void onWifiSelectionComplete(bool success);
   void runUpdateInstall();
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  void failForCompanionSlot();
+#endif
 
  public:
   explicit OtaUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

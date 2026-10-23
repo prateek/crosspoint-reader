@@ -9,6 +9,9 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <WiFi.h>
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+#include <esp_ota_ops.h>
+#endif
 
 #include <algorithm>
 #include <cstdio>
@@ -35,6 +38,11 @@
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+#include "activities/util/ConfirmationActivity.h"
+#include "network/FirmwareFlasher.h"
+#include "network/OtaBootSwitch.h"
+#endif
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -114,6 +122,13 @@ void SettingsActivity::rebuildSettingsLists() {
   // asset isn't published yet just report no update available.
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  // Dual boot: the Companion owns ota_0, so offer the switch only from ota_1.
+  if (const esp_partition_t* running = esp_ota_get_running_partition();
+      running && running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_1) {
+    systemSettings.push_back(SettingInfo::Action(StrId::STR_SWITCH_TO_COMPANION, SettingAction::SwitchToCompanion));
+  }
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_PLUGINS, SettingAction::Plugins));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_ABOUT, SettingAction::About));
@@ -419,6 +434,11 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::SdFirmwareUpdate:
         startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
         break;
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+      case SettingAction::SwitchToCompanion:
+        startSwitchToCompanion();
+        return;
+#endif
       case SettingAction::DownloadFonts:
         startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {
@@ -488,6 +508,44 @@ void SettingsActivity::toggleCurrentSetting() {
   applyUiSettingChange(setting.valuePtr);
   activeNav().selected = std::min(ringPos(), settingsCount);
 }
+
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+void SettingsActivity::startSwitchToCompanion() {
+  if (!firmware_flash::companionImagePresent()) {
+    const char* options[] = {tr(STR_OK_BUTTON)};
+    optionPopup.showMessage(tr(STR_SWITCH_TO_COMPANION), tr(STR_COMPANION_NOT_INSTALLED), options, 1, 0, [](int) {});
+    requestUpdate();
+    return;
+  }
+  auto activity = makeUniqueNoThrow<ConfirmationActivity>(renderer, mappedInput, tr(STR_SWITCH_TO_COMPANION_PROMPT),
+                                                          tr(STR_SWITCH_TO_COMPANION_BODY));
+  if (!activity) {
+    LOG_ERR("SETTINGS", "OOM: ConfirmationActivity");
+    return;
+  }
+  startActivityForResult(std::move(activity), [this](const ActivityResult& result) {
+    if (!result.isCancelled) switchToCompanion();
+  });
+}
+
+void SettingsActivity::switchToCompanion() {
+  const esp_partition_t* companion =
+      esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
+  if (!companion || !ota_boot::switchTo(companion)) {
+    LOG_ERR("SETTINGS", "Switch to Companion failed");
+    const char* options[] = {tr(STR_OK_BUTTON)};
+    optionPopup.showMessage(tr(STR_SWITCH_TO_COMPANION), tr(STR_COMPANION_SWITCH_FAILED), options, 1, 0, [](int) {});
+    requestUpdate();
+    return;
+  }
+  LOG_INF("SETTINGS", "Restarting into Companion (%s)", companion->label);
+  // Runs from the loop task with no lock held; the popup paints straight to the panel.
+  RenderLock lock;
+  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  delay(50);
+  ESP.restart();
+}
+#endif
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {
   if (quickResumeTimeoutChanged) {

@@ -18,11 +18,30 @@ void SdFirmwareUpdateActivity::onEnter() {
   Activity::onEnter();
   // Build-identity marker — confirms which firmware build owns the SD update flow.
   LOG_INF("FW", "SdFirmwareUpdateActivity build=%s %s recovery=%d", __DATE__, __TIME__, recoveryMode ? 1 : 0);
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  // The next OTA slot holds the Companion; refuse before picking a file.
+  if (firmware_flash::isCompanionSlot(esp_ota_get_next_update_partition(nullptr))) {
+    setCompanionSlotError();
+    state = State::FAILED;
+    requestUpdate();
+    return;
+  }
+#endif
   state = State::PICKING;
   launchPicker();
 }
 
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+void SdFirmwareUpdateActivity::setCompanionSlotError() {
+  errorMessage = tr(STR_UPDATE_FROM_COMPANION);
+  errorHint = tr(STR_UPDATE_FROM_COMPANION_HINT);
+}
+#endif
+
 void SdFirmwareUpdateActivity::launchPicker() {
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  errorHint = nullptr;
+#endif
   // Reuse the standard file browser, restricted to .bin files only.
   startActivityForResult(
       std::make_unique<FileBrowserActivity>(renderer, mappedInput, "/", FileBrowserActivity::Mode::PickFirmware),
@@ -84,6 +103,13 @@ bool SdFirmwareUpdateActivity::validateFirmware() {
     errorMessage = tr(STR_INVALID_FIRMWARE);
     return false;
   }
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  if (firmware_flash::isCompanionSlot(dest)) {
+    LOG_ERR("FW", "next update partition %s is the Companion slot", dest->label);
+    setCompanionSlotError();
+    return false;
+  }
+#endif
   const size_t partitionLimit = dest->size;
   if (firmwareSize > partitionLimit) {
     LOG_ERR("FW", "firmware (%u bytes) exceeds partition (%u bytes)", static_cast<unsigned>(firmwareSize),
@@ -169,6 +195,15 @@ void SdFirmwareUpdateActivity::performUpdate() {
   const auto result = firmware_flash::flashFromSdPath(firmwarePath.c_str(), progressCb, this);
   if (result != firmware_flash::Result::OK) {
     LOG_ERR("FW", "flash failed: %s", firmware_flash::resultName(result));
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+    if (result == firmware_flash::Result::COMPANION_SLOT) {
+      RenderLock lock(*this);
+      setCompanionSlotError();
+      state = State::FAILED;
+      requestUpdate();
+      return;
+    }
+#endif
     // BAD_CHIP / WRONG_BOARD here is the TOCTOU re-validation catching a
     // wrong-device image the pre-confirmation pass missed (e.g. the SD card
     // was swapped).
@@ -255,6 +290,15 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     if (!errorMessage.empty()) {
       renderer.drawCenteredText(UI_10_FONT_ID, top + lineHeight + metrics.verticalSpacing, errorMessage.c_str());
     }
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+    if (errorHint != nullptr) {
+      const int hintY = top + 2 * (lineHeight + metrics.verticalSpacing);
+      const Rect hintBounds{metrics.contentSidePadding, hintY, pageWidth - metrics.contentSidePadding * 2,
+                            pageHeight - hintY};
+      UITheme::drawCenteredWrappedText(renderer, hintBounds, UI_10_FONT_ID, errorHint, 3, true, EpdFontFamily::REGULAR,
+                                       UITheme::TextVerticalAlignment::TOP);
+    }
+#endif
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {

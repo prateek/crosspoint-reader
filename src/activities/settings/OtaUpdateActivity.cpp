@@ -3,6 +3,11 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <WiFi.h>
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+#include <esp_ota_ops.h>
+
+#include "network/FirmwareFlasher.h"
+#endif
 
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
@@ -72,8 +77,28 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   requestUpdate();
 }
 
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+void OtaUpdateActivity::failForCompanionSlot() {
+  {
+    RenderLock lock(*this);
+    failedDetail = tr(STR_UPDATE_FROM_COMPANION);
+    failedHint = tr(STR_UPDATE_FROM_COMPANION_HINT);
+    state = FAILED;
+  }
+  requestUpdate();
+}
+#endif
+
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
+
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  // The next OTA slot holds the Companion; refuse before starting Wi-Fi.
+  if (firmware_flash::isCompanionSlot(esp_ota_get_next_update_partition(nullptr))) {
+    failForCompanionSlot();
+    return;
+  }
+#endif
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
@@ -158,6 +183,15 @@ void OtaUpdateActivity::render(RenderLock&&) {
     if (failedDetail != nullptr) {
       renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing, failedDetail);
     }
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+    if (failedHint != nullptr) {
+      const int hintY = top + 2 * (height + metrics.verticalSpacing);
+      const Rect hintBounds{metrics.contentSidePadding, hintY, pageWidth - metrics.contentSidePadding * 2,
+                            pageHeight - hintY};
+      UITheme::drawCenteredWrappedText(renderer, hintBounds, UI_10_FONT_ID, failedHint, 3, true, EpdFontFamily::REGULAR,
+                                       UITheme::TextVerticalAlignment::TOP);
+    }
+#endif
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == FINISHED) {
@@ -188,6 +222,12 @@ void OtaUpdateActivity::runUpdateInstall() {
       },
       this);
 
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  if (res == OtaUpdater::COMPANION_SLOT_ERROR) {
+    failForCompanionSlot();
+    return;
+  }
+#endif
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update failed: %d", res);
     {

@@ -15,6 +15,28 @@ The environment uses ESP32-S3 N16R8, 16 MB flash, 8 MB OPI PSRAM, the existing O
 
 The firmware carries the `paperdiy` board tag. OTA looks for an explicitly named PaperDIY asset and rejects other board tags. Upstream does not yet publish that asset; there is no release-workflow change in this port.
 
+## Dual boot with Companion
+
+The `paperdiy-companion` environment builds CrossPoint for a dual-boot layout. It is `paperdiy` plus `-DCROSSPOINT_COMPANION_DUAL_BOOT=1`; other environments do not set the flag. The partition table is unchanged. The Companion firmware runs from `ota_0` (0x10000) and CrossPoint runs from `ota_1` (0x650000). Each slot is 0x640000 bytes. Companion must be built with the same `partitions.csv`. Dual boot has not been tested on hardware.
+
+```sh
+pio run -e paperdiy-companion
+```
+
+Install over USB after backing up the factory flash. Flash Companion first; its upload writes the bootloader, the partition table and an otadata that boots `ota_0`. Then upload this environment, which `scripts/companion_upload_slot.py` points at `ota_1` (0x650000) without touching otadata:
+
+```sh
+pio run -e paperdiy-companion -t upload
+```
+
+The device keeps booting Companion; switch to CrossPoint from there. Do not flash this environment's `firmware.factory.bin`: it is a whole-flash image whose padding erases `ota_0`, and Companion with it.
+
+To switch from CrossPoint to Companion, open Settings → System → Switch to Companion. The item appears only when CrossPoint runs from `ota_1`. CrossPoint checks that `ota_0` starts with an app image header for this chip and an app descriptor; it does not verify the whole image or that the image is Companion. If the check fails, it shows "Companion firmware is not installed" and changes nothing. After confirmation, it points otadata at `ota_0` and restarts.
+
+CrossPoint cannot update itself in this layout because its next update slot is Companion's `ota_0`. Check for Updates and SD Card Firmware Update refuse before writing flash and show "Updates install from Companion". Companion owns the return path and CrossPoint updates; its firmware README is the reference. In summary: copy the new image to the SD card root as `crosspoint.bin`, open Companion and hold its Record and Mark keys together for about 1.5 seconds. Companion installs the file into `ota_1`, renames it `crosspoint.bin.installed` and boots CrossPoint. Without the file, the same chord only switches to CrossPoint.
+
+Recovery mode on this build cannot install anything: every SD update is refused and the file picker reopens. Power the device off to leave it. If CrossPoint cannot reach Settings, use USB to rewrite `ota_1` or to boot Companion.
+
 ## Controls and hardware ownership
 
 FreeInk owns the board profile, parallel display configuration, PMIC access and button interpretation. CrossPoint's HAL owns shutdown and its existing wake policy. The firmware adds no direct BookOrbit client.

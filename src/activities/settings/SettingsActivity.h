@@ -24,6 +24,9 @@ enum class SettingAction {
   ClearCache,
   CheckForUpdates,
   SdFirmwareUpdate,
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  SwitchToCompanion,
+#endif
   Language,
   DownloadFonts,
   TextSettings,
@@ -230,6 +233,10 @@ class SettingsActivity final : public UiTabListActivity {
   void openSleepTimeoutPicker();
   void rebuildSettingsLists();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  void startSwitchToCompanion();
+  void switchToCompanion();
+#endif
 
   void drawChrome() override;
   void drawFooter() override;

@@ -3,6 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+#include <esp_partition.h>
+#endif
+
 // Flash a firmware image from an SD-card path into the next OTA app
 // partition, then switch otadata so the X3/X4 stock bootloader picks it up
 // on next boot. Mirrors the web flasher: raw esp_partition_erase_range +
@@ -32,6 +36,9 @@ enum class Result {
   ERASE_FAIL,
   WRITE_FAIL,
   OTADATA_FAIL,
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+  COMPANION_SLOT,  // next update partition is the Companion's ota_0
+#endif
 };
 
 // Progress callback: called after every chunk write. `written`/`total` are bytes.
@@ -69,5 +76,17 @@ const char* resultName(Result r);
 // successfully, its chip_id is authoritative for the current CPU, so a
 // candidate image must match it to be safe to flash.
 uint16_t runningPartitionChipId();
+
+#if CROSSPOINT_COMPANION_DUAL_BOOT
+// PaperDIY dual boot: the Companion firmware owns ota_0 and CrossPoint runs
+// from ota_1. CrossPoint must never write ota_0; the Companion installs
+// CrossPoint updates instead.
+bool isCompanionSlot(const esp_partition_t* partition);
+
+// ota_0 starts with an ESP app image header for this chip and an app
+// descriptor. An erased slot or another chip's image fails. The whole image
+// is not verified.
+bool companionImagePresent();
+#endif
 
 }  // namespace firmware_flash
